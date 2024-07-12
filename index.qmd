@@ -1,0 +1,352 @@
+---
+title: "Global Fertility and infant mortality"
+author: "Chifundo Kanjala"
+format:  
+  dashboard:
+    github: https://github.com/YOUR_URL
+theme: lux
+execute:
+  echo: false
+  warning: false
+  message: false
+---
+
+```{r}
+# Load packages 
+if(!require(pacman)) install.packages("pacman")
+pacman::p_load(tidyverse,
+               bslib, 
+               here,
+               bsicons, 
+               shiny, 
+               rgeoboundaries, 
+               plotly, 
+               gapminder,
+               htmltools, 
+               reactable, 
+               janitor, 
+               gganimate,
+               gapminder, 
+               rnaturalearth,
+               countrycode)
+
+```
+
+```{r echo=FALSE, include=FALSE}
+
+#import data
+
+demo_indicators_raw <- 
+  read_csv(here("data/demogr.csv"))
+
+country_data <- 
+  read_csv(here("data/CountriesGapminder.csv")) 
+
+```
+
+
+```{r echo=FALSE, message=FALSE}
+country_iso_groups <- 
+  country_data %>% 
+  select(geo, name, four_regions) %>% 
+  mutate(iso3_alpha_code = str_to_lower(geo))
+```
+
+
+```{r include=FALSE}
+#initial cleaning
+demo_indicators_cleaner1 <- demo_indicators_raw %>%
+  janitor::row_to_names(row_number = 16) %>% 
+    clean_names() %>% 
+  rename(parent_code = na_4, year = na_5, pop_density = na_6, 
+         total_pop = total_population_as_of_1_july_thousands, tfr = total_fertility_rate_live_births_per_woman, life_exp_0 = life_expectancy_at_birth_both_sexes_years,
+         imr = infant_mortality_rate_infant_deaths_per_1_000_live_births) %>% 
+  select(year,type, parent_code, iso3_alpha_code, region_subregion_country_or_area,pop_density, total_pop, tfr, life_exp_0,imr) %>% 
+  mutate(total_pop = as.numeric(str_replace_all(total_pop, "\\s", "")), 
+         iso3_alpha_code = str_to_lower(iso3_alpha_code))
+
+demo_indicators_cleaner2 <- 
+  demo_indicators_cleaner1 %>% 
+  mutate(tfr = as.numeric(tfr),
+         life_exp_0 = as.numeric(life_exp_0),
+         imr = as.numeric(imr),
+         parent_code = as.factor(parent_code))
+```
+
+```{r include=FALSE}
+unique(demo_indicators_cleaner2$region_subregion_country_or_area)
+setdiff(demo_indicators_cleaner2$iso3_alpha_code, country_iso_groups$iso3_alpha_code)
+setdiff(country_iso_groups$iso3_alpha_code, demo_indicators_cleaner2$iso3_alpha_code)
+
+countrycodes <- demo_indicators_cleaner2 %>% 
+  select(region_subregion_country_or_area,iso3_alpha_code) %>% 
+  filter(iso3_alpha_code %in% c("myt", "reu", "esh", "shn", "mac", "fro", 
+                              "ggy", "imn", "jey", "gib", "vat", "xkx",
+                              "aia", "abw", "bes", "vgb", "cym", "cuw",
+                              "glp", "mtq", "msr", "pri", "blm", "maf",
+                              "sxm", "tca", "vir", "flk", "guf", "bmu",
+                              "grl", "spm", "ncl", "gum", "mnp", "asm", 
+                              "cok", "pyf", "niu", "tkl", "wlf"))
+
+unique(countrycodes$region_subregion_country_or_area)
+
+```
+
+
+```{r echo=FALSE, message=FALSE}
+
+# 
+demo_indicators_4regions <-
+  inner_join(demo_indicators_cleaner2,country_iso_groups, by ="iso3_alpha_code")
+
+```
+
+
+
+
+```{r echo=FALSE}
+library(ggplot2)
+library(plotly)
+library(dplyr)
+
+# Convert total_pop to numeric
+demo_indicators_simple_scatter <- demo_indicators_4regions %>%
+  filter(type == "Country/Area") %>%
+  mutate(total_pop = as.numeric(total_pop), four_regions = str_to_title(four_regions))  
+  
+
+# scatterplot
+fert_imr_plot2 <- ggplot(data = demo_indicators_simple_scatter,
+       mapping = aes(x = tfr,
+                     y = imr,
+                     frame = year,
+                     color = four_regions,
+                     size = total_pop,
+                     text = paste("Country: ", region_subregion_country_or_area,
+                                  "<br>Total Fertility Rate: ", tfr,
+                                  "<br>Infant Mortality Rate: ", imr,
+                                  "<br>Population, in 1000s: ", total_pop,
+                                  "<br>Year: ", year,
+                                  "<br>Region: ",four_regions))) +
+  geom_point(alpha = 0.5) +
+  scale_size(range = c(1, 20)) +
+  #scale_x_log10()+
+  theme_gray() +
+  theme(legend.position = "none") +
+  labs(title = "Infant Mortality Rate by Total Fertility Rate",
+       y = "Infant Mortality Rate per 1000 live births",
+       x = "Total Fertility Rate",
+       color = "Region",
+       size = "Total Population")
+
+localeval <- Sys.setlocale(locale="C")
+# Convert to plotly and define tooltips
+fert_imr_plot2 <- ggplotly(fert_imr_plot2, tooltip = "text")
+
+# Display the plot
+
+
+```
+
+
+```{r}
+#fertmortplotly <- ggplotly(fert_imr_plot2, tooltip = "text")
+```
+
+```{r}
+country_shapes <- rnaturalearth::ne_countries() %>% 
+  mutate(adm0_a3 = str_to_lower(adm0_a3))
+
+
+fert_imr_2021 <- demo_indicators_simple_scatter %>% 
+  filter(year == 2021)
+
+
+fert_map_2021 <-left_join(country_shapes,fert_imr_2021,by = c("adm0_a3" = "iso3_alpha_code")) %>% 
+  mutate(tooltip_label = paste(
+    admin,
+    tfr, sep = ": ")) %>% 
+
+  ggplot()+
+  geom_sf(aes(fill = tfr, 
+              text =tooltip_label))+
+  theme_void()+
+  theme(legend.position = "none")
+
+fert_map_ggplotly <- ggplotly(fert_map_2021, tooltip = "text")
+```
+
+
+```{r echo=FALSE}
+# highest fertility
+
+highest_fert_country <-
+  demo_indicators_simple_scatter %>% 
+  filter(year == 2021) %>% 
+  arrange(-tfr) %>% 
+  head(1) %>% 
+  pull(region_subregion_country_or_area)
+
+highest_fert_val <-
+  demo_indicators_simple_scatter %>% 
+  filter(year == 2021) %>%
+  arrange(-tfr) %>% 
+  head(1) %>% 
+  pull(tfr) %>% 
+  round(1)
+
+#lowest fertility
+lowest_fert_country <-
+  demo_indicators_simple_scatter %>% 
+  filter(year == 2021) %>% 
+  arrange(tfr) %>% 
+  head(1) %>% 
+  pull(region_subregion_country_or_area)
+
+lowest_fert_val <-
+  demo_indicators_simple_scatter %>% 
+  filter(year == 2021) %>%
+  arrange(tfr) %>% 
+  head(1) %>% 
+  pull(tfr) %>% 
+  round(1)
+```
+
+
+```{r include=FALSE}
+# highest infant mortality
+
+highest_imr_country <-
+  demo_indicators_simple_scatter %>% 
+  filter(year == 2021) %>%
+  arrange(-imr) %>% 
+  head(1) %>% 
+  pull(region_subregion_country_or_area)
+
+highest_imr_val <-
+  demo_indicators_simple_scatter %>% 
+  filter(year == 2021) %>%
+  arrange(-imr) %>% 
+  head(1) %>% 
+  pull(imr) %>% 
+  round(1)
+
+#lowest infant mortality
+lowest_imr_country <-
+  demo_indicators_simple_scatter %>% 
+  filter(year == 2021) %>%
+  arrange(imr) %>% 
+  head(1) %>% 
+  pull(region_subregion_country_or_area)
+
+lowest_imr_val <-
+  demo_indicators_simple_scatter %>% 
+  filter(year == 2021) %>%
+  arrange(imr) %>% 
+  head(1) %>% 
+  pull(imr) %>% 
+  round(1)
+```
+
+
+# HOME 
+
+## Row 1 {height=25%}
+
+```{r}
+value_box(
+  title = "Highest Total Fertility Rate, 2021",
+  value = highest_fert_val,
+  showcase = bsicons::bs_icon("person-plus"),
+  theme = value_box_theme(bg = "#214773"),
+  p(paste0("(", highest_fert_country,")"))
+)
+```
+
+
+```{r}
+value_box(
+  title = "Lowest Total Fertility Rate, 2021",
+  value = lowest_fert_val,
+  showcase = bsicons::bs_icon("person-plus"),
+  theme = value_box_theme(bg = "#518fd6"),
+  p(paste0("(", lowest_fert_country,")"))
+)
+```
+
+
+
+
+```{r}
+value_box(
+  title = "Highest Infant Mortality Rate, 2021",
+  value = highest_imr_val,
+  showcase = bsicons::bs_icon("clipboard-minus-fill"),
+  theme = value_box_theme(bg = "#214773"),
+  p(paste0("(", highest_imr_country,")"))
+  
+)
+```
+
+
+```{r}
+value_box(
+  title = "Lowest Infant Mortality Rate, 2021",
+  value = lowest_imr_val,
+  showcase = bsicons::bs_icon("clipboard-minus-fill"),
+  theme = value_box_theme(bg = "#518fd6"),
+  p(paste0("(", lowest_imr_country,")"))
+  
+)
+```
+
+
+
+## Row 2 {height=75%}
+
+### {width=40%}
+
+
+```{r title = "Total Fertility Rate by Infant Mortality Rate"}
+fert_imr_plot2
+```
+
+
+### {width=60%}
+
+```{r title = "Map of Countries by Total Fertility Rate, 2021"}
+fert_map_ggplotly
+```
+
+
+# DOWNLOAD DATA
+
+```{r echo=FALSE, message=FALSE}
+library(htmltools)
+demo_indicators_simple_scatter[] <- lapply(demo_indicators_simple_scatter, function(x) iconv(x, to = "UTF-8"))
+htmltools::browsable(
+  tagList(
+      reactable(demo_indicators_simple_scatter,
+                elementId = "demo_indicators_simple_scatter-table",
+                searchable = T,
+                filterable = T),
+      
+tags$button("Download as CSV",
+            onclick = "Reactable.downloadDataCSV('demo_indicators_simple_scatter-table')")
+  )
+)
+
+
+```
+
+
+
+# ABOUT
+
+These data come from the Gapminder website: https://www.gapminder.org/data/documentation/gd008/. They are estimates of the United Nations	Population Division	Department of Economic and Social Affairs, World Population Prospects 2022						
+File GEN/01/REV1: Demographic indicators by region, subregion and country, annually for 1950-2100						
+Estimates, 1950 - 2021						
+POP/DB/WPP/Rev.2022/GEN/F01/Rev.1						
+© July 2022 by United Nations, made available under a Creative Commons license CC BY 3.0 IGO: http://creativecommons.org/licenses/by/3.0/igo/						
+Suggested citation: United Nations, Department of Economic and Social Affairs, Population Division (2022). World Population Prospects 2022, Online Edition.						
+										
