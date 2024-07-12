@@ -3,7 +3,7 @@ title: "Global Fertility and infant mortality"
 author: "Chifundo Kanjala"
 format:  
   dashboard:
-    github: https://github.com/YOUR_URL
+    github: https://chifundok.github.io/FinalProject_TFR_IMR/
 theme: lux
 execute:
   echo: false
@@ -11,7 +11,7 @@ execute:
   message: false
 ---
 
-```{r}
+```{r echo=FALSE, message=FALSE}
 # Load packages 
 if(!require(pacman)) install.packages("pacman")
 pacman::p_load(tidyverse,
@@ -140,6 +140,7 @@ fert_imr_plot2 <- ggplot(data = demo_indicators_simple_scatter,
        size = "Total Population")
 
 localeval <- Sys.setlocale(locale="C")
+
 # Convert to plotly and define tooltips
 fert_imr_plot2 <- ggplotly(fert_imr_plot2, tooltip = "text")
 
@@ -149,11 +150,7 @@ fert_imr_plot2 <- ggplotly(fert_imr_plot2, tooltip = "text")
 ```
 
 
-```{r}
-#fertmortplotly <- ggplotly(fert_imr_plot2, tooltip = "text")
-```
-
-```{r}
+```{r echo=FALSE, message=FALSE}
 country_shapes <- rnaturalearth::ne_countries() %>% 
   mutate(adm0_a3 = str_to_lower(adm0_a3))
 
